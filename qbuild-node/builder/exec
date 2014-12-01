@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -eo pipefail
+
+cd /app
+
+for file in .profile.d/*.sh; do
+  source $file
+done
+
+source $1

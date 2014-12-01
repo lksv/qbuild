@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# build BUILD_TASK COMMIT_ID
+
+set -eo pipefail
+
+set -x
+
+SOURCE_DIR="$1"
+APP="$2"          # build_task / job_name
+
+export QBUILD_ROOT=${QBUILD_ROOT:="/var/tmp/qbuild"}
+mkdir -p $QBUILD_ROOT
+
+export CACHE_DIR="$QBUILD_ROOT/$APP/cache"
+[[ -d $CACHE_DIR ]] || mkdir -p $CACHE_DIR
+
+if [[ ! -f $APP ]]; then
+  echo "QBuild file '$APP' is missing"
+  exit 1
+fi
+
+DOCKER_IMAGE=$(ruby -e "require 'yaml';puts YAML.load_file('$APP')['image'] || 'lksv/qbuild-node'")
+
+echo "----> Building  $APP (dockeer: $DOCKER_IMAGE)"
+
+# Run the builder script and attach to view output
+ID=$(docker run -d -v $SOURCE_DIR:/app -v $CACHE_DIR:/cache $DOCKER_IMAGE /build/builder "$APP")
+docker attach $ID
+test $(docker wait $ID) -eq 0
+
+
+DEPLOY_PORT=$(ruby -e "require 'yaml';puts (YAML.load_file('$APP')['deploy'] || {})['port']")
+DEPLOY_SCRIPT=$(ruby -e "require 'yaml';puts (YAML.load_file('$APP')['deploy'] || {})['script']")
+
+if [ -n $DEPLOY_PORT ]; then
+  echo "-----> Deploying $APP ..."
+
+  if [[ -f "$QBUILD_ROOT/$APP/CONTAINER" ]]; then
+    oldid=$(< "$QBUILD_ROOT/$APP/CONTAINER")
+  fi
+
+  # kill the old container
+  if [[ -n "$oldid" ]]; then
+    # Let the old container finish processing requests, before terminating it
+    WAIT="${QBUILD_WAIT_TO_RETIRE:-60}"
+    echo "-----> Shutting down old container in $WAIT seconds"
+    (
+      exec >/dev/null 2>/dev/null </dev/null
+      trap '' INT HUP
+      sleep $WAIT
+      docker kill $oldid
+    ) & disown -a
+    # Use trap since disown/nohup don't seem to keep child alive
+    # Give child process just enough time to set the traps
+    sleep 0.1
+  fi
+
+  ID=$(docker run -d -p $DEPLOY_PORT -v $SOURCEDIR:/app $DOCKER_IMAGE /usr/bin/sudo -u ubuntu -h bash -c "cd; $DEPLOY_COMMAND")
+  echo $ID > "$QBUILD_ROOT/$APP/CONTAINER"
+
+fi
