@@ -2,41 +2,19 @@
 
 set -eo pipefail
 
-[[ -d /app ]] || mkdir -p /app
-
-user_id=1000 #$((RANDOM+1000))
-user_name=ubuntu
-
-/usr/sbin/addgroup --quiet --gid $user_id $user_name
-/usr/sbin/adduser --shell /bin/bash \
-  --disabled-password \
-  --force-badname \
-  --uid $user_id \
-  --gid $user_id \
-  --gecos '' \
-  --quiet \
-  $user_name
-  #--home /app \
-  #--no-create-home \
-
-# Grant the user access to all required paths before
-# running the compile phase as non-privileged user.
-chgrp $user_name /dev
-chown $user_name:$user_name /dev/shm /tmp /var/tmp
-chown -R $user_name:$user_name /app /cache
-
-cd /app
+#[[ -d /app ]] || mkdir -p /app
+#cd /app
 
 mkdir -p /app/.profile.d
 
 if [[ -f "$1" ]]; then
   #ruby -e "require 'yaml';(YAML.load_file('$1')['env'] || {}).each{|k,v| puts \"export #{k}='#{v}'\"}" > /app/.profile.d/00_config_vars.sh
   ruby -e "require 'yaml';(YAML.load_file('$1')['env'] || {}).each{|k,v| puts \"export #{k}\"}" > /app/.profile.d/00_config_vars.sh
-  ruby -e "require 'yaml'; Array(YAML.load_file('$1')['dependencies']).join(\"\\n\")" > /app/.profile.d/100_dependences.sh
+  ruby -e "require 'yaml'; puts Array(YAML.load_file('$1')['dependencies']).join(\"\\n\")" > /app/.profile.d/100_dependences.sh
 fi
 
 SCRIPT_FILE=$1.build_script.sh
 
 ruby -e "require 'yaml';puts Array(YAML.load_file('$1')['script']).join(\"\\n\")" > $SCRIPT_FILE
 
-sudo -u $user_name -H sh -c "/build/exec $SCRIPT_FILE"
+/build/exec $SCRIPT_FILE
