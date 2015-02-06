@@ -43,6 +43,9 @@ docker rm $ID
 MATCH_BRANCH=$(ruby -e "require 'yaml';puts (YAML.load_file('$APP')['deploy'] || {})['branch']")
 DEPLOY_PORT=$(ruby -e "require 'yaml';puts (YAML.load_file('$APP')['deploy'] || {})['port']")
 
+TMP_PORT2=$(ruby -e "require 'yaml';puts (YAML.load_file('$APP')['deploy'] || {})['port2']")
+[ "$TMP_PORT2" != "nil" ] && DEPLOY_PORT2="-p $TMP_PORT2"
+
 if [ -n "$DEPLOY_PORT" -a "$BRANCH" = "$MATCH_BRANCH" ]; then
   echo "-----> Deploying $APP on port $DEPLOY_PORT"
 
@@ -69,7 +72,8 @@ if [ -n "$DEPLOY_PORT" -a "$BRANCH" = "$MATCH_BRANCH" ]; then
     sleep 5
   fi
 
-  ID=$(docker run -d -p $DEPLOY_PORT -v $SOURCE_DIR:/app -v $CACHE_DIR:/cache -w /app $DOCKER_IMAGE sh -c "$script \"/build/deployer $APP\"")
+  #ID=$(docker run -d --net=host -p $DEPLOY_PORT DEPLOY_PORT2 -v $SOURCE_DIR:/app -v $CACHE_DIR:/cache -w /app $DOCKER_IMAGE sh -c "$script \"/build/deployer $APP\"")
+  ID=$(docker run -d -p $DEPLOY_PORT $DEPLOY_PORT2 -v $SOURCE_DIR:/app -v $CACHE_DIR:/cache -w /app $DOCKER_IMAGE sh -c "$script \"/build/deployer $APP\"")
   #docker attach $ID
   echo $ID > "$QBUILD_ROOT/$APP/CONTAINER"
 
